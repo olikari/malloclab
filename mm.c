@@ -29,8 +29,8 @@
  *
  * === User information ===
  * Group: 
- * User 1: 
- * SSN: X
+ * User 1: Olafur Kari Sigurbjornsson 
+ * SSN: X  2611872569	
  * User 2: 
  * SSN: X
  * User 3: 
@@ -41,9 +41,9 @@ team_t team = {
     /* Group name */
     "STY16_Forever",
     /* First member's full name */
-    "Freysteinn Alfredsson",
+    "Olafur Kari Sigurbjornsson",
     /* First member's email address */
-    "freysteinn@ru.is",
+    "olafurks10@ru.is",
     /* Second member's full name (leave blank if none) */
     "",
     /* Second member's email address (leave blank if none) */
