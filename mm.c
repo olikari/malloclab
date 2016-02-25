@@ -6,8 +6,19 @@
  * footers.  Blocks are never coalesced or reused. Realloc is
  * implemented directly using mm_malloc and mm_free.
  *
- * NOTE TO STUDENTS: Replace this header comment with your own header
- * comment that gives a high level description of your solution.
+ * - Ætlum að styðjast við explicit lista til að halda utan um fríar blokkir
+ * - Ætlum að styðjast við best fit í "placement policy"
+ * - Til að sameina samliggjandi fríar blokkir ætlum við að notast við
+ *   boundary tags (vera með header og footer) og þ.a.l. vera með doubly linked list.
+ * - Til að byrja með verðum við með footer í allocated blokkum en kemur til greina
+ *   að sleppa því til að spara pláss þegar lengra verður komið.
+ * - Fríar blokkir hafa 16 byte OVERHEAD, header, pred pointer, succ pointer og footer
+ *   svo min size á blokkum eru 16 byte.
+ * - Alligned blokkir samanstanda af header, payload, padding, footer.
+ * - Næsta skref er að útfæra mm_init() (sjá dummy kóða í falli) og keyra litla traceskrá 
+ *   sem búin var til og sett í möppuna traces.
+ * - mm_checkheap() var útfært sem error checker sem og hjálparföllin mm_printBlock() og
+ *   mm_checkBlock().
  *
  */
 #include <stdio.h>
@@ -103,6 +114,8 @@ static void mm_checkblock(void* bp);
  */
 int mm_init(void)
 {
+	mm_checkheap(1);
+	// upphafsstilla global variables
 	// held að við notum sbrk hér til að allocate-a minni á heap
 	// returns 0 if successfull, -1 otherwise
 	// undir búa breakpointerinn.... setja hann á réttan stað
@@ -163,6 +176,8 @@ static void mm_checkheap(int verbose){
 	char* bp = heap_listp;
 	char* freeBlock = bp;
 	char* allBlocks = start_of_heap;
+	
+	// setja verbose utan um allt, eða nota verbose macro ?
 	if(verbose){
 		printf("Pointer to first free block: %p\n", heap_listp);
 	}
@@ -182,16 +197,12 @@ static void mm_checkheap(int verbose){
 		}
 		/* Er einnhver block í free lista með prev eða next block marked as free ? 
 		 * WARNING: GÆTI FENGIÐ SEG FOULT Á NEXT_BLOCKP 
-		 * WARNING: ALGJOR MACRO SÚPA, GÆTI VERIÐ EÐ FUCKED */
-		if((GET_ALLOC(NEXT_BLOCKP(HDRP(freeBlock)) == 0)) || (GET_ALLOC(PREV_BLOCKP(HDRP(freeBlock)) == 0))){
+		 * SKILAR NEXT_BLOCKP EKKI BENDI Á HEAD Á NÆSTU BLOCK ????*/
+		if((GET_ALLOC(NEXT_BLOCKP(freeBlock)) == 0) || (GET_ALLOC(PREV_BLOCKP(freeBlock)) == 0)){
 			printf("Error: Adjacent blocks are free but not coalesced\n");
 		}
-		
-		/*  Do the pointers in the free list point to valid free blocks?
-		 * Pössum að blockir eru ekki minni en OVERHEAD */
-		if(GET_SIZE_BLOCK(HDRP(freeBlock)) < OVERHEAD){
-			printf("Error: Free block not valid, size < OVERHEAD");
-		}
+	
+		//  Do the pointers in the free list point to valid free blocks?
 
 		// færum pointer á næstu block
 		freeBlock = NEXT_BLOCKP(freeBlock);
