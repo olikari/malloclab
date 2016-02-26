@@ -69,7 +69,8 @@ team_t team = {
 #define ALIGNMENT 	8
 #define WSIZE 		4
 #define DSIZE		8
-#define OVERHEAD 	16
+#define OVERHEAD 	16			/* overhead in allo or free blocks */
+#define CHUNKSIZE	(1<<16)		/* Extend heap by this amount (bytes) */
 //const int ALIGNMENT = 8;
 
 /* pack a size and allocated bit into a word */
@@ -89,7 +90,7 @@ team_t team = {
 
 /* Given block pointer bp, compute address of next and previous blocks */
 #define NEXT_BLOCKP(bp)		((char *)(bp) + GET_SIZE_BLOCK(((char *)(bp) - WSIZE)))
-#define PREV_BLOCKP(bp)		((char *)(bp) + GET_SIZE_BLOCK(((char *)(bp) - DSIZE)))
+#define PREV_BLOCKP(bp)		((char *)(bp) - GET_SIZE_BLOCK(((char *)(bp) - DSIZE)))
 
 /* rounds up to the nearest multiple of ALIGNMENT */
 #define ALIGN(size) (((size) + (ALIGNMENT-1)) & ~0x7)
@@ -101,8 +102,8 @@ team_t team = {
 #define SIZE_T_SIZE (ALIGN(sizeof(size_t)))
 
 /* Global variables */
-static char *heap_listp;		/* points to first free block */
-static char *start_of_heap; 	/* points to start of heap */
+static char* heap_listp;		/* points to first free block */
+static char* start_of_heap; 	/* points to start of heap */
 
 /* helper functions */
 static void mm_checkheap(int verbose);
@@ -110,12 +111,30 @@ static void mm_printblock(void* bp);
 static void mm_checkblock(void* bp);
 static void mm_insert(void* bp);
 static void mm_remove(void* bp);
+static void *mm_extend_heap(size_t words);
 
 /* 
  * mm_init - initialize the malloc package.
  */
 int mm_init(void)
 {
+	if((heap_listp = mem_sbrk(DSIZE * 2)) == (void *)-1){
+		return -1;
+	}
+	/* Set size á prologue block sem 8 byte. Prologe
+	 * og epilogue eru sentinel nóður til að einfalda
+	 * coalescing */
+	// PADDING??: að vera 0 eða WSIZE, size á epilogue er 0, en tekur það
+	// WSIZE í minni ???
+	PUT(heap_listp, 0);			/* Alignment padding: 8byte boundary */
+	PUT(heap_listp + (WSIZE), PACK(8, 1));		/* prologue header */
+	PUT(heap_listp + (DSIZE), PACK(8, 1));		/* prologue footer */
+	PUT(heap_listp + (3*WSIZE), PACK(0, 1));	/* Epilogue block */
+	/* Látum heap_listp benda á blokk sem kemur á
+	 * eftir prologue footer */
+	heap_listp += (3*WSIZE);
+	start_of_heap = heap_listp;
+
 	mm_checkheap(1);
 	// upphafsstillum global breytur
 	// fyrsta blokk verður að vera 16 byte
@@ -279,4 +298,28 @@ static void mm_insert(void* bp){
 
 static void mm_remove(void* bp){
 	
+}
+
+static void *mm_extend_heap(size_t words){
+	
+	char *bp;
+	size_t size;
+	/* Pössum uppá 8 byte allignment */
+	size = (words % 2) ? (words + 1) * WSIZE : words * WSIZE;
+
+	if((bp = mem_sbrk(size)) == (void *)-1){
+		return NULL;
+	}
+
+	/* Frumstillum fríu blokkina og epilogue header 
+	 * QUESTION: vill ég láta pred og succ benda á header
+	 * á pred og succ blokkum ? Sjá línu 3 og 4 !
+	 * og á ég ekki örugglega að kasta í size_t þar ?? */
+	PUT(HDRP(bp), PACK(size, 0));			/* stillum header og footer */
+	PUT(FTRP(bp), PACK(size, 0));
+	PUT(HDRP(bp) + WSIZE, (size_t)HDRP(PREV_BLOCKP(bp)));
+	PUT(HDRP(bp) + DSIZE, (size_t)HDRP(NEXT_BLOCKP(bp)));
+	PUT(HDRP(NEXT_BLOCKP(bp)), PACK(0,1));		/* nýr epilogue header */
+
+	return(bp);
 }
