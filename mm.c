@@ -6,8 +6,8 @@
  * footers.  Blocks are never coalesced or reused. Realloc is
  * implemented directly using mm_malloc and mm_free.
  *
- * - Ætlum að styðjast við explicit lista til að halda utan um fríar blokkir
- * - Ætlum að styðjast við best fit í "placement policy"
+ * - Ætlum að styðjast við ecplicit list til að halda utan um fríar blokkur
+ * - Æltum að styðjast við best fit í placement policy
  * - Til að sameina samliggjandi fríar blokkir ætlum við að notast við
  *   boundary tags (vera með header og footer) og þ.a.l. vera með doubly linked list.
  * - Til að byrja með verðum við með footer í allocated blokkum en kemur til greina
@@ -15,8 +15,8 @@
  * - Fríar blokkir hafa 16 byte OVERHEAD, header, pred pointer, succ pointer og footer
  *   svo min size á blokkum eru 16 byte.
  * - Alligned blokkir samanstanda af header, payload, padding, footer.
- * - Næsta skref er að útfæra mm_init() (sjá dummy kóða í falli) og keyra litla traceskrá 
- *   sem búin var til og sett í möppuna traces.
+ * - Næsta skref er að útfæra mm_init() (sjá dummy kóða í falli) og keyra litla traceskrá
+ *   sem búin var til  og sett í möppunar traces.
  * - mm_checkheap() var útfært sem error checker sem og hjálparföllin mm_printBlock() og
  *   mm_checkBlock().
  *
@@ -39,10 +39,10 @@
  *       Format!
  *
  * === User information ===
- * Group: 
- * User 1: Olafur Kari Sigurbjornsson 
+ * Group: MallCats 
+ * User 1: olafurks10
  * SSN: X  2611872569	
- * User 2: 
+ * User 2: asgeira13 
  * SSN: X
  * User 3: 
  * SSN: X
@@ -50,15 +50,15 @@
  ********************************************************/
 team_t team = {
     /* Group name */
-    "STY16_Forever",
+    "MallCats",
     /* First member's full name */
     "Olafur Kari Sigurbjornsson",
     /* First member's email address */
     "olafurks10@ru.is",
     /* Second member's full name (leave blank if none) */
-    "",
+    "Ásgeir Atlason",
     /* Second member's email address (leave blank if none) */
-    "",
+    "asgeira13@ru.is",
     /* Third full name (leave blank if none) */
     "",
     /* Third member's email address (leave blank if none) */
@@ -108,6 +108,8 @@ static char *start_of_heap; 	/* points to start of heap */
 static void mm_checkheap(int verbose);
 static void mm_printblock(void* bp);
 static void mm_checkblock(void* bp);
+static void mm_insert(void* bp);
+static void mm_remove(void* bp);
 
 /* 
  * mm_init - initialize the malloc package.
@@ -115,10 +117,11 @@ static void mm_checkblock(void* bp);
 int mm_init(void)
 {
 	mm_checkheap(1);
-	// upphafsstilla global variables
-	// held að við notum sbrk hér til að allocate-a minni á heap
+	// upphafsstillum global breytur
+	// fyrsta blokk verður að vera 16 byte
+	// notum sbrk hér til að allocate-a minni á heap
 	// returns 0 if successfull, -1 otherwise
-	// undir búa breakpointerinn.... setja hann á réttan stað
+	// undirbúa breakpointerinn.... setja hann á réttan stað
 	// búa til smá pláss til þess að við séum undirbúin að kalla á malloc
     return 0;
 }
@@ -176,8 +179,6 @@ static void mm_checkheap(int verbose){
 	char* bp = heap_listp;
 	char* freeBlock = bp;
 	char* allBlocks = start_of_heap;
-	
-	// setja verbose utan um allt, eða nota verbose macro ?
 	if(verbose){
 		printf("Pointer to first free block: %p\n", heap_listp);
 	}
@@ -197,12 +198,16 @@ static void mm_checkheap(int verbose){
 		}
 		/* Er einnhver block í free lista með prev eða next block marked as free ? 
 		 * WARNING: GÆTI FENGIÐ SEG FOULT Á NEXT_BLOCKP 
-		 * SKILAR NEXT_BLOCKP EKKI BENDI Á HEAD Á NÆSTU BLOCK ????*/
-		if((GET_ALLOC(NEXT_BLOCKP(freeBlock)) == 0) || (GET_ALLOC(PREV_BLOCKP(freeBlock)) == 0)){
+		 * WARNING: ALGJOR MACRO SÚPA, GÆTI VERIÐ EÐ FUCKED */
+		if((GET_ALLOC(NEXT_BLOCKP(HDRP(freeBlock)) == 0)) || (GET_ALLOC(PREV_BLOCKP(HDRP(freeBlock)) == 0))){
 			printf("Error: Adjacent blocks are free but not coalesced\n");
 		}
-	
-		//  Do the pointers in the free list point to valid free blocks?
+		
+		/*  Do the pointers in the free list point to valid free blocks?
+		 * Pössum að blockir eru ekki minni en OVERHEAD */
+		if(GET_SIZE_BLOCK(HDRP(freeBlock)) < OVERHEAD){
+			printf("Error: Free block not valid, size < OVERHEAD");
+		}
 
 		// færum pointer á næstu block
 		freeBlock = NEXT_BLOCKP(freeBlock);
@@ -266,4 +271,12 @@ static void mm_checkblock(void* bp){
 	if(GET(HDRP(bp)) != GET(FTRP(bp))){
 		printf("Error: Size & Align in header and footer not the same !");
 	}
+}
+
+static void mm_insert(void* bp){
+	
+}
+
+static void mm_remove(void* bp){
+	
 }
