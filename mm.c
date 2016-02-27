@@ -70,7 +70,7 @@ team_t team = {
 #define WSIZE 		4
 #define DSIZE		8
 #define OVERHEAD 	16			/* overhead in allo or free blocks */
-#define CHUNKSIZE	(1<<16)		/* Extend heap by this amount (bytes) */
+#define CHUNKSIZE	(1<12)		/* Extend heap by this amount (bytes) */
 //const int ALIGNMENT = 8;
 
 /* pack a size and allocated bit into a word */
@@ -112,13 +112,14 @@ static void mm_checkblock(void* bp);
 static void mm_insert(void* bp);
 static void mm_remove(void* bp);
 static void *mm_extend_heap(size_t words);
+static void mm_simple_check(int verbose);
 
 /* 
  * mm_init - initialize the malloc package.
  */
 int mm_init(void)
 {
-	if((heap_listp = mem_sbrk(DSIZE * 2)) == (void *)-1){
+	if((heap_listp = mem_sbrk(DSIZE * 3)) == (void *)-1){
 		return -1;
 	}
 	/* Set size á prologue block sem 8 byte. Prologe
@@ -130,12 +131,20 @@ int mm_init(void)
 	PUT(heap_listp + (WSIZE), PACK(8, 1));		/* prologue header */
 	PUT(heap_listp + (DSIZE), PACK(8, 1));		/* prologue footer */
 	PUT(heap_listp + (3*WSIZE), PACK(0, 1));	/* Epilogue block */
-	/* Látum heap_listp benda á blokk sem kemur á
-	 * eftir prologue footer */
-	heap_listp += (3*WSIZE);
-	start_of_heap = heap_listp;
+	/* Látum heap_listp benda á prologue block */
+	heap_listp += (2*WSIZE);
+	start_of_heap = heap_listp + DSIZE;
+	
+	mm_simple_check(0);
+	mm_checkheap(0);
 
-	mm_checkheap(1);
+	/* Extendum heap-inn og setjum free blokk á heap.
+	 * QUESTION: af hverju viljum við gera CHUNKSIZE/WSIZE ?? */
+	if(mm_extend_heap(CHUNKSIZE) == NULL){
+		return -1;
+	}
+	
+	mm_simple_check(0);
 	// upphafsstillum global breytur
 	// fyrsta blokk verður að vera 16 byte
 	// notum sbrk hér til að allocate-a minni á heap
@@ -196,10 +205,10 @@ void *mm_realloc(void *ptr, size_t size)
 static void mm_checkheap(int verbose){
 
 	char* bp = heap_listp;
-	char* freeBlock = bp;
+	char* freeBlock = start_of_heap;
 	char* allBlocks = start_of_heap;
 	if(verbose){
-		printf("Pointer to first free block: %p\n", heap_listp);
+		printf("Pointer to first free block: %p\n", start_of_heap);
 	}
 	
 	/* Loopan skoðar blockir í free listann og 
@@ -218,14 +227,14 @@ static void mm_checkheap(int verbose){
 		/* Er einnhver block í free lista með prev eða next block marked as free ? 
 		 * WARNING: GÆTI FENGIÐ SEG FOULT Á NEXT_BLOCKP 
 		 * WARNING: ALGJOR MACRO SÚPA, GÆTI VERIÐ EÐ FUCKED */
-		if((GET_ALLOC(NEXT_BLOCKP(HDRP(freeBlock)) == 0)) || (GET_ALLOC(PREV_BLOCKP(HDRP(freeBlock)) == 0))){
+		/*if((GET_ALLOC(NEXT_BLOCKP(HDRP(freeBlock)) == 0)) || (GET_ALLOC(PREV_BLOCKP(HDRP(freeBlock)) == 0))){
 			printf("Error: Adjacent blocks are free but not coalesced\n");
-		}
+		}*/
 		
 		/*  Do the pointers in the free list point to valid free blocks?
 		 * Pössum að blockir eru ekki minni en OVERHEAD */
 		if(GET_SIZE_BLOCK(HDRP(freeBlock)) < OVERHEAD){
-			printf("Error: Free block not valid, size < OVERHEAD");
+			printf("Error: Free block not valid, size < OVERHEAD\n");
 		}
 
 		// færum pointer á næstu block
@@ -288,7 +297,7 @@ static void mm_checkblock(void* bp){
 	}
 	/* Er header og footer sá sami */
 	if(GET(HDRP(bp)) != GET(FTRP(bp))){
-		printf("Error: Size & Align in header and footer not the same !");
+		printf("Error: Size & Align in header and footer not the same !\n");
 	}
 }
 
@@ -320,6 +329,28 @@ static void *mm_extend_heap(size_t words){
 	PUT(HDRP(bp) + WSIZE, (size_t)HDRP(PREV_BLOCKP(bp)));
 	PUT(HDRP(bp) + DSIZE, (size_t)HDRP(NEXT_BLOCKP(bp)));
 	PUT(HDRP(NEXT_BLOCKP(bp)), PACK(0,1));		/* nýr epilogue header */
-
+	
 	return(bp);
+}
+
+static void mm_simple_check(int verbose){
+	char* bp;
+
+	mm_checkblock(heap_listp);
+	
+	printf("Size of heap: %d\n", mem_heapsize());
+		
+	// skoðum hvort prologe header sé réttur
+	if(GET_SIZE_BLOCK(HDRP(heap_listp)) != DSIZE || !GET_ALLOC(HDRP(heap_listp))){
+		printf("Bad prologue header\n");
+	}
+
+	for(bp = heap_listp; GET_SIZE_BLOCK(HDRP(bp)) > 0; bp = NEXT_BLOCKP(bp)){
+		
+		if(verbose){
+			mm_printblock(bp);
+		}
+
+		mm_checkblock(bp);
+	}
 }
