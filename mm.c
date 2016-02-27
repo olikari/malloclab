@@ -135,16 +135,21 @@ int mm_init(void)
 	heap_listp += (2*WSIZE);
 	start_of_heap = heap_listp + DSIZE;
 	
-	mm_simple_check(0);
+	mm_simple_check(1);
 	mm_checkheap(0);
-
+	
+	void *freeblock;
 	/* Extendum heap-inn og setjum free blokk á heap.
 	 * QUESTION: af hverju viljum við gera CHUNKSIZE/WSIZE ?? */
-	if(mm_extend_heap(CHUNKSIZE) == NULL){
+	if((freeblock = mm_extend_heap(CHUNKSIZE/WSIZE)) == NULL){
 		return -1;
 	}
 	
-	mm_simple_check(0);
+	// þurfum að bæta freeblock inní free block list.... but dont know how !!
+	
+	printf("************************\n");
+	
+	mm_simple_check(1);
 	// upphafsstillum global breytur
 	// fyrsta blokk verður að vera 16 byte
 	// notum sbrk hér til að allocate-a minni á heap
@@ -161,6 +166,9 @@ int mm_init(void)
 void *mm_malloc(size_t size)
 {
     int newsize = ALIGN(size + SIZE_T_SIZE);
+	
+
+
     void *p = mem_sbrk(newsize);
     if (p == (void *)-1) {
         return NULL;
@@ -208,7 +216,7 @@ static void mm_checkheap(int verbose){
 	char* freeBlock = start_of_heap;
 	char* allBlocks = start_of_heap;
 	if(verbose){
-		printf("Pointer to first free block: %p\n", start_of_heap);
+		printf("Heap: %p\n", heap_listp);
 	}
 	
 	/* Loopan skoðar blockir í free listann og 
@@ -285,6 +293,10 @@ static void mm_printblock(void *bp){
 	printf("%p: header: [%d:%c] footer: [%d:%c]\n", bp,
 			hsize, (halloc ? 'a' : 'f'),
 			fsize, (falloc ? 'a' : 'f'));
+	
+	if(!GET_ALLOC(bp)){
+		printf("Predecessor: %d ------ Successor: %d \n", GET(bp), GET(bp+WSIZE));
+	}
 }
 
 /* Athugar hvort að reglum sé framfylgt í
@@ -299,10 +311,14 @@ static void mm_checkblock(void* bp){
 	if(GET(HDRP(bp)) != GET(FTRP(bp))){
 		printf("Error: Size & Align in header and footer not the same !\n");
 	}
+	if(!GET_ALLOC(bp)){
+		printf("Predecessor: %d ------ Successor: %d \n", GET(bp), GET(bp+WSIZE));
+	}
 }
 
 static void mm_insert(void* bp){
-	
+	//PUT(bp, HDRP(mm_heap_listp) + WSIZE);
+	//PUT(bp + WSIZE, )
 }
 
 static void mm_remove(void* bp){
@@ -335,22 +351,26 @@ static void *mm_extend_heap(size_t words){
 
 static void mm_simple_check(int verbose){
 	char* bp;
-
-	mm_checkblock(heap_listp);
 	
+	bp = heap_listp;
+
+	//printf("Heap: %p\n", heap_listp);
 	printf("Size of heap: %d\n", mem_heapsize());
 		
 	// skoðum hvort prologe header sé réttur
 	if(GET_SIZE_BLOCK(HDRP(heap_listp)) != DSIZE || !GET_ALLOC(HDRP(heap_listp))){
 		printf("Bad prologue header\n");
-	}
+	}	
+	mm_checkblock(heap_listp);
 
 	for(bp = heap_listp; GET_SIZE_BLOCK(HDRP(bp)) > 0; bp = NEXT_BLOCKP(bp)){
 		
 		if(verbose){
 			mm_printblock(bp);
 		}
-
 		mm_checkblock(bp);
+	}
+	if((GET_SIZE_BLOCK(HDRP(bp)) != 0) || !(GET_ALLOC(HDRP(bp)))){
+		printf("Bad epilogue header\n");
 	}
 }
