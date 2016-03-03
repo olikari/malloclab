@@ -23,7 +23,7 @@ VERSION = 1
 HANDINDIR = /labs/sty16/.handin/malloclab
 
 CC = gcc
-CFLAGS = -Wall -g -O2 -m32 -std=gnu11
+CFLAGS = -Wall -g -O2 -pg -m32 -std=gnu11
 
 OBJS = mdriver.o mm.o memlib.o fsecs.o fcyc.o clock.o ftimer.o
 

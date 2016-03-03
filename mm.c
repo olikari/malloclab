@@ -3,7 +3,7 @@
  * begin                                                          end
  * heap                                                           heap  
  *  -----------------------------------------------------------------   
- * |  pad   | hdr(8:a) | ftr(8:a) | zero or more usr blks | hdr(8:a) |
+ * |  pad   | hdr(16:a) | ftr(16:a) | zero or more usr blks | hdr(8:a) |
  *  -----------------------------------------------------------------
  *          |       prologue      |                       | epilogue |
  *          |         block       |                       | block    |
@@ -190,20 +190,55 @@ void mm_free(void *bp)
 /* $end mmfree */
 
 /*
- * mm_realloc - naive implementation of mm_realloc
+ * mm_realloc - naive implementation of mm_realloc. The realloc() function shall change the 
+ * size of the memory object pointed to by ptr to the size specified by size. The contents 
+ * of the object shall remain unchanged up to the lesser of the new and old sizes. If the 
+ * new size of the memory object would require movement of the object, the space for the 
+ * previous instantiation of the object is freed. If the new size is larger, the contents 
+ * of the newly allocated portion of the object are unspecified.
  */
 void *mm_realloc(void *ptr, size_t size)
 {
     void *newp;
-    size_t oldSize;
+	void *oldp = ptr;
+    size_t oldSize = GET_SIZE(HDRP(ptr));
+	int isPrevFree = GET_ALLOC(FTRP(PREV_BLKP(oldp)));
+	int isNextFree = GET_ALLOC(HDRP(NEXT_BLKP(oldp)));
+	int prevSize = GET_SIZE(FTRP(PREV_BLKP(oldp)));
+	int nextSize = GET_SIZE(FTRP(NEXT_BLKP(oldp)));
+
 
 	if(ptr == NULL)
 		return mm_malloc(size);
- 	if(size == 0){
+	else if(size == 0){
 		mm_free(ptr);
 		return NULL;
 	}
-	oldSize = GET_SIZE(HDRP(ptr));
+	// ef nýja svæði er minna en upprunalega og rest af svæði nægilega stórt til að mynda nýja fría blokk
+	// VIRKAR EKKI EINS OG ER, FÆ "realloc did not preserve the data from old block" VILLU !!!
+	else if(size < oldSize && (oldSize - size) >= OVERHEAD){
+		printf("***");
+		PUT(HDRP(oldp), PACK(size, 1));
+		PUT(FTRP(oldp), PACK(size, 1));
+		newp = oldp;
+		oldp = NEXT_BLKP(newp);
+		PUT(HDRP(oldp), PACK(oldSize - size, 0));
+		PUT(FTRP(oldp), PACK(oldSize - size, 0));
+		// er þetta ekki sniðugt ?
+		if(!GET_ALLOC(NEXT_BLKP(oldp))){
+			oldp = coalesce(oldp);		
+		}
+		insert_block(oldp);
+		return newp;
+	}
+	// nýa svæði er minna en upprunalega og ekki nægilega stórt til að mynda nýja blokk
+	else if(size - oldSize <= 0){
+		return ptr;
+	}
+	// ef prev eða next blokk er free og summa af oldsize + size á free blokk er stærra en nýja stærð
+	else if(size > oldSize && (!isPrevFree || !isNextFree) && ((prevSize + oldSize) > size || (nextSize + oldSize) > size)){
+		
+	}
 
 	// calculate the adjusted size of the request ????
 	// ef adjustedSize <= oldsize, return ptr
@@ -314,7 +349,7 @@ static void *place(void *bp, size_t asize)
         bp = NEXT_BLKP(bp);
         PUT(HDRP(bp), PACK(csize-asize, 0));
         PUT(FTRP(bp), PACK(csize-asize, 0));
-		// setjum free blokkina sem kom út úr splitti í free litsa
+		// setjum free blokkina sem kom út úr splitti í free lista
 		freeBlock = bp;
 		insert_block(freeBlock);
     }
@@ -343,16 +378,6 @@ static void *find_fit(size_t asize)
 		}
     	bp = (void*)GET(SUCC(bp));
 	}
-
-	// fæ segfault á loopuna hér að neðan
-    /*for (bp = heap_listp; bp != 0; bp = (void*)GET(SUCC((bp)))) {
-        if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp)))) {
-			// tökum blokkina sem fannst útúr free listanum
-			remove_block(bp);
-            return bp;
-        }
-		bp = (void*)GET(SUCC(bp));
-    }*/
     return NULL; // no fit
 }
 
