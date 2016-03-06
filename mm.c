@@ -1,28 +1,58 @@
- /* The list has the following form:
- *
- * begin                                                          end
- * heap                                                           heap  
- *  -----------------------------------------------------------------   
- * |  pad   | hdr(16:a) | ftr(16:a) | zero or more usr blks | hdr(8:a) |
- *  -----------------------------------------------------------------
- *          |       prologue      |                       | epilogue |
- *          |         block       |                       | block    |
- */
+/*
+ *  * mm-naive.c - The fastest, least memory-efficient malloc package.
+ *   * 
+ *    * In this naive approach, a block is allocated by simply incrementing
+ *     * the brk pointer.  A block is pure payload. There are no headers or
+ *      * footers.  Blocks are never coalesced or reused. Realloc is
+ *       * implemented directly using mm_malloc and mm_free.
+ *        *
+ *         * NOTE TO STUDENTS: Replace this header comment with your own header
+ *          * comment that gives a high level description of your solution.
+ *           *
+ *            */
 #include <stdio.h>
+#include <stdlib.h>
+#include <assert.h>
 #include <unistd.h>
 #include <string.h>
-#include <stdlib.h>
+
 #include "mm.h"
 #include "memlib.h"
 
-
-/* Team structure */
+/*********************************************************
+ * NOTE TO STUDENTS: Before you do anything else, please
+ * provide your team information in below _AND_ in the
+ * struct that follows.
+ * 
+ * Note: This comment is parsed. Please do not change the
+ *       Format!
+ *     
+ * === User information ===
+ * Group: Ujeee
+ * User 1: olafurks10
+ * SSN: 2611872569
+ * User 2: asgeira13
+ * SSN: X
+ * User 3: peturh13
+ * SSN: X
+ * === End User Information ===
+ *********************************************************/
 team_t team = {
-    "explisit free list", 
-    "Olafur Kari Sigurbjornsson", "olafurks10",
-    "Ásgeir Atlason", "asgeira13",
-    "Pétur Bergmann Halldórsson", "peturh13"
-}; 
+    /* Group name */
+    "Ujeeee",
+    /* First member's full name */
+    "Ólafur Kári Sigurbjörnsson",
+    /* First member's email address */
+    "olafurks10@ru.is",
+    /* Second member's full name (leave blank if none) */
+    "Ásgeir Atlason",
+    /* Second member's email address (leave blank if none) */
+    "asgeira13@ru.is",
+    /* Third full name (leave blank if none) */
+    "Pétur Bergmann Halldorsson",
+    /* Third member's email address (leave blank if none) */
+    "peturh13@ru.is"
+};
 
 /* $begin mallocmacros */
 /* Basic constants and macros */
@@ -203,9 +233,9 @@ void *mm_realloc(void *ptr, size_t size)
 	//size_t newSize = ALIGN(size);
 	size_t asize;
 	//size_t isPrevFree = GET_ALLOC(FTRP(PREV_BLKP(oldp)));
-	//size_t isNextFree = GET_ALLOC(HDRP(NEXT_BLKP(oldp)));
+	size_t isNextFree = GET_ALLOC(HDRP(NEXT_BLKP(oldp)));
 	//size_t prevSize = GET_SIZE(FTRP(PREV_BLKP(oldp)));
-	//size_t nextSize = GET_SIZE(HDRP(NEXT_BLKP(oldp)));
+	size_t nextSize = GET_SIZE(HDRP(NEXT_BLKP(oldp)));
 
 	//mm_checkheap(0);
 
@@ -245,7 +275,11 @@ void *mm_realloc(void *ptr, size_t size)
 		else{
 			PUT(HDRP(oldp), PACK(asize, 1));
 			PUT(FTRP(oldp), PACK(asize, 1));
-			//PUT(HDRP(NEXT_BLKP(oldp)), PACK()
+			PUT(HDRP(NEXT_BLKP(oldp)), PACK((oldSize+nextSize)-asize, 0));
+			PUT(FTRP(NEXT_BLKP(oldp)), PACK((oldSize+nextSize)-asize, 0));
+			void *freeBlock = NEXT_BLKP(oldp);
+			insert_block(freeBlock);
+			return oldp;
 		}
 	}*/	
 
