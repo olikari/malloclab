@@ -90,19 +90,16 @@ int mm_init(void)
     PUT(heap_listp+(5*WSIZE), PACK(0, 1));   /* epilogue header */
     heap_listp += (2*WSIZE);
 	freeblockcount = 0;
-	//countblocks = -1;
-	//mm_free(NULL);
 
 	//mm_checkheap(1); 
 	
 	char* freeblock;
     /* Extend the empty heap with a free block of CHUNKSIZE bytes */
-    if ((freeblock = extend_heap((CHUNKSIZE/WSIZE) + 88)) == NULL) {
+    if ((freeblock = extend_heap((CHUNKSIZE/WSIZE + 88))) == NULL) {
         return -1;
     }
-
-	//printf("Inserta block\n");
 	insert_block(freeblock);
+	
 	//mm_checkheap(1);
 
 	/*printf("Remove-a block\n");
@@ -141,6 +138,7 @@ void *mm_malloc(size_t size)
     size_t asize;      /* adjusted block size */
     size_t extendsize; /* amount to extend heap if no fit */
     char *bp;      
+	
 
     /* Ignore spurious requests */
     if (size <= 0) {
@@ -163,10 +161,11 @@ void *mm_malloc(size_t size)
 
     /* No fit found. Get more memory and place the block */
     extendsize = MAX(asize,CHUNKSIZE);
-    if ((bp = extend_heap((extendsize/WSIZE) + 88)) == NULL) {
+    if ((bp = extend_heap((extendsize/WSIZE + 88))) == NULL) {
         return NULL;
     }
     place(bp, asize);
+	//mm_checkheap(0);
     return bp;
 } 
 /* $end mmmalloc */
@@ -178,15 +177,10 @@ void *mm_malloc(size_t size)
 void mm_free(void *bp)
 {
     size_t size = GET_SIZE(HDRP(bp));
-	char* freeblock;
-
     PUT(HDRP(bp), PACK(size, 0));
     PUT(FTRP(bp), PACK(size, 0));
-    
-	freeblock = coalesce(bp);
-	insert_block(freeblock);
+	insert_block(coalesce(bp));
 }
-
 /* $end mmfree */
 
 /*
@@ -201,12 +195,14 @@ void *mm_realloc(void *ptr, size_t size)
 {
     void *newp;
 	void *oldp = ptr;
-    size_t oldSize = GET_SIZE(HDRP(ptr));
-	int isPrevFree = GET_ALLOC(FTRP(PREV_BLKP(oldp)));
-	int isNextFree = GET_ALLOC(HDRP(NEXT_BLKP(oldp)));
-	int prevSize = GET_SIZE(FTRP(PREV_BLKP(oldp)));
-	int nextSize = GET_SIZE(FTRP(NEXT_BLKP(oldp)));
+    size_t oldSize = GET_SIZE(HDRP(oldp));
+	size_t newSize = size + OVERHEAD;
+	size_t isPrevFree = GET_ALLOC(FTRP(PREV_BLKP(oldp)));
+	size_t isNextFree = GET_ALLOC(HDRP(NEXT_BLKP(oldp)));
+	size_t prevSize = GET_SIZE(FTRP(PREV_BLKP(oldp)));
+	size_t nextSize = GET_SIZE(HDRP(NEXT_BLKP(oldp)));
 
+	mm_checkheap(0);
 
 	if(ptr == NULL)
 		return mm_malloc(size);
@@ -214,31 +210,143 @@ void *mm_realloc(void *ptr, size_t size)
 		mm_free(ptr);
 		return NULL;
 	}
-	// ef nýja svæði er minna en upprunalega og rest af svæði nægilega stórt til að mynda nýja fría blokk
-	// VIRKAR EKKI EINS OG ER, FÆ "realloc did not preserve the data from old block" VILLU !!!
-	else if(size < oldSize && (oldSize - size) >= OVERHEAD){
-		printf("***");
-		PUT(HDRP(oldp), PACK(size, 1));
-		PUT(FTRP(oldp), PACK(size, 1));
-		newp = oldp;
-		oldp = NEXT_BLKP(newp);
-		PUT(HDRP(oldp), PACK(oldSize - size, 0));
-		PUT(FTRP(oldp), PACK(oldSize - size, 0));
-		// er þetta ekki sniðugt ?
-		if(!GET_ALLOC(NEXT_BLKP(oldp))){
-			oldp = coalesce(oldp);		
-		}
-		insert_block(oldp);
-		return newp;
-	}
-	// nýa svæði er minna en upprunalega og ekki nægilega stórt til að mynda nýja blokk
-	else if(size - oldSize <= 0){
+	else if(size < OVERHEAD){
 		return ptr;
 	}
-	// ef prev eða next blokk er free og summa af oldsize + size á free blokk er stærra en nýja stærð
-	else if(size > oldSize && (!isPrevFree || !isNextFree) && ((prevSize + oldSize) > size || (nextSize + oldSize) > size)){
-		
+	else if(newSize < oldSize){
+		if(size < OVERHEAD)
+			size = OVERHEAD;
+		if(oldSize - newSize >= OVERHEAD){
+			PUT(HDRP(oldp), PACK(newSize, 1));
+			//printf("FER HINGAÐ !!!\n");
+			PUT(FTRP(oldp), PACK(newSize, 1));
+			void* temp = NEXT_BLKP(oldp);
+			PUT(HDRP(temp), PACK((oldSize-newSize), 0));
+			PUT(FTRP(temp), PACK((oldSize-newSize), 0));
+			insert_block(temp);
+			return oldp;
+		}
+		else{
+			//printf("notum alllt oldSize\n");
+			PUT(HDRP(oldp), PACK(oldSize, 1));
+			PUT(FTRP(oldp), PACK(oldSize, 1));
+			return oldp;
+		}
 	}
+	else if(oldSize + nextSize > newSize && !isNextFree && GET_SIZE(NEXT_BLKP(oldp)) != 0){
+		//printf("oldSize og nextSize er nógu stórt til að hýsa newSize!\n");
+		
+		//remove_block(NEXT_BLKP(oldp));
+		size_t restSize = (oldSize + nextSize) - newSize;
+		if(restSize >= OVERHEAD){
+			//printf("GETUM BUIÐ TIL BLOKK UR REST !!!\n");
+			//PUT(HDRP(oldp), PACK(newSize, 1));
+			//PUT(HDRP(oldp), PACK(newSize, 1));
+			//void* newFreeBlock = NEXT_BLKP(oldp);
+			//PUT(HDRP(newFreeBlock), PACK(restSize, 0));
+			//PUT(FTRP(newFreeBlock), PACK(restSize, 0));
+			//insert_block(newFreeBlock);
+		}
+	}
+	/*else if(((oldSize + nextSize) > (size + OVERHEAD)) && !isNextFree){
+		//printf("isnextfree: %x\n", isNextFree);
+		remove_block(NEXT_BLKP(oldp));
+		size = oldSize + nextSize;
+
+		PUT(HDRP(oldp), PACK(size, 1));
+		PUT(FTRP(oldp), PACK(size, 1));
+		size_t restSize = (oldSize+nextSize) - (size+OVERHEAD);
+		if(restSize > OVERHEAD){
+			void* newFreeBlock = NEXT_BLKP(oldp);
+			PUT(HDRP(newFreeBlock), PACK(restSize, 0));
+			PUT(FTRP(newFreeBlock), PACK(restSize, 0));
+			insert_block(newFreeBlock);
+		}
+		//mm_checkheap(0);
+		return oldp;
+	}*/
+
+
+	// ef nýja svæði er minna en upprunalega og rest af svæði nægilega stórt til að mynda nýja fría blokk
+	// VIRKAR EKKI EINS OG ER, FÆ "realloc did not preserve the data from old block" VILLU !!!
+	// Ef nýja stærð á memory object er minni en sú gamla
+	/*else if(size <= oldSize && size > OVERHEAD){ 
+		// ef pláss sem losnar við minnkun er nægilega stórt til að búa til free blokk
+		//if((oldSize - size) >= OVERHEAD) && size >= OVERHEAD){
+			printf("HALLO HALLO HALLO !!!");
+			PUT(HDRP(oldp), PACK(size, 1));
+			PUT(FTRP(oldp), PACK(size, 1));
+			newp = oldp;
+			oldp = NEXT_BLKP(newp);
+			if(oldSize - size >= OVERHEAD){
+				PUT(HDRP(oldp), PACK(oldSize - size, 0));
+				PUT(FTRP(oldp), PACK(oldSize - size, 0));
+				// er þetta ekki sniðugt ?
+				if(!GET_ALLOC(NEXT_BLKP(oldp)))
+					oldp = coalesce(oldp);		
+				insert_block(oldp);
+			}
+			return newp;
+	}
+		// pláss sem losnar ekki nægilega stórt til að gera nýja free blokk, skilum þá bara sama ptr
+		//else{
+		//	printf("FER HINGAÐ");
+			//PUT(HDRP(ptr), PACK(oldSize, 1);
+			//PUT(FTRP(ptr), PACK(oldSize, 1);
+		//	return ptr;
+	//	}
+	//}
+	// ef prev eða next blokk er free og summa af oldsize + size á free blokk er stærra en nýja stærð
+	//else if(size > oldSize){
+		// next blokk free og samanlöggð stærð þeirra nægilega stór
+	//	if((nextSize+oldSize) >= size && !isNextFree){
+			// taka next blokk úr free lista
+	//		void *nextBlock = NEXT_BLKP(oldp);
+		//	remove_block(nextBlock);
+			
+			// getum við búið til nýja free blokk úr restinni af tveimur blokkunum ?
+			//PUT(HDRP(oldp), PACK(size, 1));
+			//PUT(FTRP(oldp), PACK(size, 1));
+			void *newFreeBlock = GET(NEXT_BLKP(oldp));
+			if(GET_SIZE(newFreeBlock > OVERHEAD)){
+				PUT(HDRP(newFreeBlock), PACK((oldSize+nextSize) - size), 0);
+				PUT(FTRP(newFreeBlock), PACK(oldSize+nextSize) - size), 0);
+			}
+			//return oldp;
+		//}  
+		// prev blokk free og samanlöggð stærð þeirra nægilega stór
+		else if((prevSize+oldSize) >= size && !isPrevFree){
+			// svipuð pæling hér
+		}
+		// next og prev blokkir free og samanlöggð stærð þeirra nægilega stór
+		else if(!isPrevFree && isNextFree && (prevSize + nextSize + oldSize) >= size){
+			
+		}
+	}*/
+	/*else if(size > oldSize){
+		
+		mm_checkheap(1); 
+		//printf("IS NEXT FREE ???: %zu\n", isNextFree);
+		//printf("nextsize + oldsize + dsize = %zu\n", nextSize+oldSize+DSIZE);
+		//printf("size = %zu\n", size);
+		size_t totalSize = nextSize + oldSize + DSIZE;
+		if((nextSize + oldSize + DSIZE) >= size && !isNextFree){
+			//printf("FER HINGAÐ !!!!!\n");
+			void *freeBlock = NEXT_BLKP(oldp);
+			remove_block(freeBlock);
+
+			PUT(HDRP(oldp), PACK(size, 1));
+			PUT(FTRP(oldp), PACK(size, 1));
+
+			if((oldSize + nextSize) - size >= OVERHEAD){
+				void *newFreeBlock = NEXT_BLKP(oldp);
+				PUT(HDRP(newFreeBlock), PACK((oldSize+nextSize)-size, 0));
+				PUT(FTRP(newFreeBlock), PACK((oldSize+nextSize)-size, 0));
+				insert_block(newFreeBlock);
+			}
+			return oldp;
+		}
+	}*/
 
 	// calculate the adjusted size of the request ????
 	// ef adjustedSize <= oldsize, return ptr
@@ -260,7 +368,7 @@ void *mm_realloc(void *ptr, size_t size)
  */
 void mm_checkheap(int verbose) 
 {
-	printf("************ CHECK BEGIN ***************\n");
+	//printf("************ CHECK BEGIN ***************\n");
     char *bp = heap_listp;
 	char *checkAll = heap_listp;
 	int countblocks = -1;
@@ -276,28 +384,30 @@ void mm_checkheap(int verbose)
 	
 	
 	 while(GET(SUCC(bp)) != 0){
-		printblock(bp);
+		if(verbose == 1)
+		 	printblock(bp);
 		checkblock(bp);
 		//countblocks++;
 		bp = (char*)GET(SUCC(bp));
 	}
-	 printblock(bp);
+	 if(verbose == 1)
+		 printblock(bp);
 
     for (checkAll = heap_listp; GET_SIZE(HDRP(checkAll)) > 0; checkAll = NEXT_BLKP(checkAll)) {
-		if(!GET_ALLOC(checkAll) && !block_in_free_list(checkAll)){
+		if(!GET_ALLOC(HDRP(checkAll)) && !block_in_free_list(checkAll)){
 			printf("Block is marked free but not in free list\n");		
 		}
         checkblock(checkAll);
 		countblocks++;
     }
 
-	printf("Number of free blocks: %d\n", freeblockcount);
-	printf("Total number of blocks: %d\n", countblocks);
+	//printf("Number of free blocks: %d\n", freeblockcount);
+	//printf("Total number of blocks: %d\n", countblocks);
     
     if ((GET_SIZE(HDRP(checkAll)) != 0) || !(GET_ALLOC(HDRP(checkAll)))) {
         printf("Bad epilogue header\n");
     }
-	printf("****************** CHECK END ********************\n");
+	//printf("****************** CHECK END ********************\n");
 }
 
 /* The remaining routines are internal helper routines */
@@ -323,7 +433,7 @@ static void *extend_heap(size_t words)
 	PUT(PRED(bp), 0);					  /* predicessor */
 	PUT(SUCC(bp), 0);					  /* successor */
     PUT(HDRP(NEXT_BLKP(bp)), PACK(0, 1)); /* new epilogue header */
-
+	
     /* Coalesce if the previous block was free */
     return coalesce(bp);
 	//return bp;
@@ -341,19 +451,17 @@ static void *place(void *bp, size_t asize)
 {
     size_t csize = GET_SIZE(HDRP(bp));
 	void *alloBlock = bp;
-	void *freeBlock;
 
     if ((csize - asize) >= (DSIZE + OVERHEAD)) { 
-        PUT(HDRP(bp), PACK(asize, 1));
+		PUT(HDRP(bp), PACK(asize, 1));
         PUT(FTRP(bp), PACK(asize, 1));
         bp = NEXT_BLKP(bp);
         PUT(HDRP(bp), PACK(csize-asize, 0));
         PUT(FTRP(bp), PACK(csize-asize, 0));
 		// setjum free blokkina sem kom út úr splitti í free lista
-		freeBlock = bp;
-		insert_block(freeBlock);
+		insert_block(bp);
     }
-    else { 
+    else {
         PUT(HDRP(bp), PACK(csize, 1));
         PUT(FTRP(bp), PACK(csize, 1));
     }
@@ -374,6 +482,7 @@ static void *find_fit(size_t asize)
 	    if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp)))) {
 		// tökum blokkina sem fannst útúr free listanum
 		remove_block(bp);
+		// remove-um frekar í place fallinu
       	 return bp;
 		}
     	bp = (void*)GET(SUCC(bp));
@@ -390,8 +499,9 @@ static void *coalesce(void *bp)
     size_t next_alloc = GET_ALLOC(HDRP(NEXT_BLKP(bp)));
     size_t size = GET_SIZE(HDRP(bp));
 
-    if (prev_alloc && next_alloc) {            // Case 1 
-        return bp;
+    if (prev_alloc && next_alloc) {  			// Case 1 
+        //insert_block(bp);
+		return bp;
     }
     else if (prev_alloc && !next_alloc) {      // Case 2 
 		// ef next block er free tökum við hana úr free lista
@@ -459,11 +569,16 @@ static void checkblock(void *bp)
     if (GET(HDRP(bp)) != GET(FTRP(bp))) {
         printf("Error: header does not match footer\n");
     }
+	if(GET_ALLOC(HDRP(bp)) == 0){
+		if(GET_SIZE(HDRP(bp)) < 16){
+			printf("Free block is lesser than 16 bytes !\n");
+		}
+	}
 }
 
 static void insert_block(void *bp){
 	
-	if(freeblockcount == 0){
+	if(GET(SUCC(heap_listp)) == 0){
 		PUT(PRED(heap_listp), 0);
 		PUT(SUCC(heap_listp), (size_t)bp);
 		PUT(PRED(bp), (size_t)heap_listp);
@@ -476,11 +591,6 @@ static void insert_block(void *bp){
 		PUT(PRED(GET(SUCC(heap_listp))), (size_t)bp);
 		PUT(SUCC(heap_listp), (size_t)bp);
 	}
-	//PUT(PRED(bp), (size_t)heap_listp);
-	//PUT(SUCC(bp), (size_t)NEXT_BLKP(heap_listp));
-	//PUT(PRED(NEXT_BLKP(heap_listp)), (size_t)bp);
-	//PUT(SUCC(bp), (size_t)SUCC(heap_listp));
-	//PUT(SUCC(heap_listp), (size_t)bp);
 	freeblockcount++;
 }
 
@@ -505,12 +615,12 @@ static void remove_block(void *bp){
 
 static int block_in_free_list(void *bp){
 	// fara í gegnum heap_listp listann
-	char* freelist = heap_listp;
+	void* freelist = heap_listp;
 	// fáum segfoult á loopuna hér að neðan
 	do{
 		if(freelist == bp)
 			return 1;	
-		freelist = (char*)GET(SUCC(freelist));
+		freelist = (void*)GET(SUCC(freelist));
 	} while(freelist != 0);
 
 	return 0;
