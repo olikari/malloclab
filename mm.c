@@ -15,12 +15,13 @@
 #include "mm.h"
 #include "memlib.h"
 
+
 /* Team structure */
 team_t team = {
-    "explicit first fit", 
-    "Olafur Kari Sigurbjornsson", "ujeeee",
-    "", "",
-    "", ""
+    "explisit free list", 
+    "Olafur Kari Sigurbjornsson", "olafurks10",
+    "Ásgeir Atlason", "asgeira13",
+    "Pétur Bergmann Halldórsson", "peturh13"
 }; 
 
 /* $begin mallocmacros */
@@ -29,6 +30,7 @@ team_t team = {
 #define DSIZE       8       /* doubleword size (bytes) */
 #define CHUNKSIZE  (1<<12)  /* initial heap size (bytes) */
 #define OVERHEAD    16       /* overhead of header and footer (bytes) */
+#define ALIGNMENT	8
 
 #define MAX(x, y) ((x) > (y)? (x) : (y))  
 
@@ -54,6 +56,8 @@ team_t team = {
 /* Given block ptr bp, compute address of next and previous blocks */
 #define NEXT_BLKP(bp)  ((char *)(bp) + GET_SIZE(((char *)(bp) - WSIZE)))
 #define PREV_BLKP(bp)  ((char *)(bp) - GET_SIZE(((char *)(bp) - DSIZE)))
+
+#define ALIGN(size)		(((size) + (ALIGNMENT-1)) & ~0x7)
 /* $end mallocmacros */
 
 /* Global variables */
@@ -82,12 +86,12 @@ int mm_init(void)
     if ((heap_listp = mem_sbrk(6*WSIZE)) == NULL) {
         return -1;
     }
-    PUT(heap_listp, 0);                        /* alignment padding */
-    PUT(heap_listp+(1*WSIZE), PACK(OVERHEAD, 1));  /* prologue header */
+    PUT(heap_listp, 0);                       		 /* alignment padding */
+    PUT(heap_listp+(1*WSIZE), PACK(OVERHEAD, 1));  	/* prologue header */
 	PUT(heap_listp+(2*WSIZE), 0);
 	PUT(heap_listp+(3*WSIZE), 0);
-    PUT(heap_listp+(4*WSIZE), PACK(OVERHEAD, 1));  /* prologue footer */ 
-    PUT(heap_listp+(5*WSIZE), PACK(0, 1));   /* epilogue header */
+    PUT(heap_listp+(4*WSIZE), PACK(OVERHEAD, 1));  	/* prologue footer */ 
+    PUT(heap_listp+(5*WSIZE), PACK(0, 1));   		/* epilogue header */
     heap_listp += (2*WSIZE);
 	freeblockcount = 0;
 
@@ -196,157 +200,54 @@ void *mm_realloc(void *ptr, size_t size)
     void *newp;
 	void *oldp = ptr;
     size_t oldSize = GET_SIZE(HDRP(oldp));
-	size_t newSize = size + OVERHEAD;
-	size_t isPrevFree = GET_ALLOC(FTRP(PREV_BLKP(oldp)));
-	size_t isNextFree = GET_ALLOC(HDRP(NEXT_BLKP(oldp)));
-	size_t prevSize = GET_SIZE(FTRP(PREV_BLKP(oldp)));
-	size_t nextSize = GET_SIZE(HDRP(NEXT_BLKP(oldp)));
+	//size_t newSize = ALIGN(size);
+	size_t asize;
+	//size_t isPrevFree = GET_ALLOC(FTRP(PREV_BLKP(oldp)));
+	//size_t isNextFree = GET_ALLOC(HDRP(NEXT_BLKP(oldp)));
+	//size_t prevSize = GET_SIZE(FTRP(PREV_BLKP(oldp)));
+	//size_t nextSize = GET_SIZE(HDRP(NEXT_BLKP(oldp)));
 
-	mm_checkheap(0);
+	//mm_checkheap(0);
 
 	if(ptr == NULL)
 		return mm_malloc(size);
 	else if(size == 0){
 		mm_free(ptr);
 		return NULL;
-	}
-	else if(size < OVERHEAD){
-		return ptr;
-	}
-	else if(newSize < oldSize){
-		if(size < OVERHEAD)
-			size = OVERHEAD;
-		if(oldSize - newSize >= OVERHEAD){
-			PUT(HDRP(oldp), PACK(newSize, 1));
-			//printf("FER HINGAÐ !!!\n");
-			PUT(FTRP(oldp), PACK(newSize, 1));
-			void* temp = NEXT_BLKP(oldp);
-			PUT(HDRP(temp), PACK((oldSize-newSize), 0));
-			PUT(FTRP(temp), PACK((oldSize-newSize), 0));
-			insert_block(temp);
+	} 
+	else if(size == GET_SIZE(HDRP(ptr)))
+		return ptr;		
+	
+    if (size <= DSIZE)
+        asize = DSIZE + OVERHEAD;
+    else 
+       asize = DSIZE * ((size + (OVERHEAD) + (DSIZE-1)) / DSIZE);
+	
+	if(asize <= oldSize){
+	  //printf("OldSize: %zu , asize: %zu\n", oldSize, asize); 
+		
+	  if(oldSize - asize < OVERHEAD){
+			//printf("FER HINGAÐ\n");
 			return oldp;
+		}
+		PUT(HDRP(oldp), PACK(asize, 1));
+		PUT(FTRP(oldp), PACK(asize, 1));
+		//printf("alloc minnkar og nýtir rest í fría blokk\n");
+		PUT(HDRP(NEXT_BLKP(oldp)), PACK(oldSize - asize, 0));
+		PUT(FTRP(NEXT_BLKP(oldp)), PACK(oldSize - asize, 0));
+		insert_block(NEXT_BLKP(oldp));
+	}
+	/*else if(!isNextFree && (oldSize + nextSize) >= asize){
+		if((oldSize + nextSize) - asize < OVERHEAD){
+			PUT(HDRP(oldp), PACK(oldSize + nextSize, 1));
+			PUT(FTRP(oldp), PACK(oldSize + nextSize, 1));
 		}
 		else{
-			//printf("notum alllt oldSize\n");
-			PUT(HDRP(oldp), PACK(oldSize, 1));
-			PUT(FTRP(oldp), PACK(oldSize, 1));
-			return oldp;
+			PUT(HDRP(oldp), PACK(asize, 1));
+			PUT(FTRP(oldp), PACK(asize, 1));
+			//PUT(HDRP(NEXT_BLKP(oldp)), PACK()
 		}
-	}
-	else if(oldSize + nextSize > newSize && !isNextFree && GET_SIZE(NEXT_BLKP(oldp)) != 0){
-		//printf("oldSize og nextSize er nógu stórt til að hýsa newSize!\n");
-		
-		//remove_block(NEXT_BLKP(oldp));
-		size_t restSize = (oldSize + nextSize) - newSize;
-		if(restSize >= OVERHEAD){
-			//printf("GETUM BUIÐ TIL BLOKK UR REST !!!\n");
-			//PUT(HDRP(oldp), PACK(newSize, 1));
-			//PUT(HDRP(oldp), PACK(newSize, 1));
-			//void* newFreeBlock = NEXT_BLKP(oldp);
-			//PUT(HDRP(newFreeBlock), PACK(restSize, 0));
-			//PUT(FTRP(newFreeBlock), PACK(restSize, 0));
-			//insert_block(newFreeBlock);
-		}
-	}
-	/*else if(((oldSize + nextSize) > (size + OVERHEAD)) && !isNextFree){
-		//printf("isnextfree: %x\n", isNextFree);
-		remove_block(NEXT_BLKP(oldp));
-		size = oldSize + nextSize;
-
-		PUT(HDRP(oldp), PACK(size, 1));
-		PUT(FTRP(oldp), PACK(size, 1));
-		size_t restSize = (oldSize+nextSize) - (size+OVERHEAD);
-		if(restSize > OVERHEAD){
-			void* newFreeBlock = NEXT_BLKP(oldp);
-			PUT(HDRP(newFreeBlock), PACK(restSize, 0));
-			PUT(FTRP(newFreeBlock), PACK(restSize, 0));
-			insert_block(newFreeBlock);
-		}
-		//mm_checkheap(0);
-		return oldp;
-	}*/
-
-
-	// ef nýja svæði er minna en upprunalega og rest af svæði nægilega stórt til að mynda nýja fría blokk
-	// VIRKAR EKKI EINS OG ER, FÆ "realloc did not preserve the data from old block" VILLU !!!
-	// Ef nýja stærð á memory object er minni en sú gamla
-	/*else if(size <= oldSize && size > OVERHEAD){ 
-		// ef pláss sem losnar við minnkun er nægilega stórt til að búa til free blokk
-		//if((oldSize - size) >= OVERHEAD) && size >= OVERHEAD){
-			printf("HALLO HALLO HALLO !!!");
-			PUT(HDRP(oldp), PACK(size, 1));
-			PUT(FTRP(oldp), PACK(size, 1));
-			newp = oldp;
-			oldp = NEXT_BLKP(newp);
-			if(oldSize - size >= OVERHEAD){
-				PUT(HDRP(oldp), PACK(oldSize - size, 0));
-				PUT(FTRP(oldp), PACK(oldSize - size, 0));
-				// er þetta ekki sniðugt ?
-				if(!GET_ALLOC(NEXT_BLKP(oldp)))
-					oldp = coalesce(oldp);		
-				insert_block(oldp);
-			}
-			return newp;
-	}
-		// pláss sem losnar ekki nægilega stórt til að gera nýja free blokk, skilum þá bara sama ptr
-		//else{
-		//	printf("FER HINGAÐ");
-			//PUT(HDRP(ptr), PACK(oldSize, 1);
-			//PUT(FTRP(ptr), PACK(oldSize, 1);
-		//	return ptr;
-	//	}
-	//}
-	// ef prev eða next blokk er free og summa af oldsize + size á free blokk er stærra en nýja stærð
-	//else if(size > oldSize){
-		// next blokk free og samanlöggð stærð þeirra nægilega stór
-	//	if((nextSize+oldSize) >= size && !isNextFree){
-			// taka next blokk úr free lista
-	//		void *nextBlock = NEXT_BLKP(oldp);
-		//	remove_block(nextBlock);
-			
-			// getum við búið til nýja free blokk úr restinni af tveimur blokkunum ?
-			//PUT(HDRP(oldp), PACK(size, 1));
-			//PUT(FTRP(oldp), PACK(size, 1));
-			void *newFreeBlock = GET(NEXT_BLKP(oldp));
-			if(GET_SIZE(newFreeBlock > OVERHEAD)){
-				PUT(HDRP(newFreeBlock), PACK((oldSize+nextSize) - size), 0);
-				PUT(FTRP(newFreeBlock), PACK(oldSize+nextSize) - size), 0);
-			}
-			//return oldp;
-		//}  
-		// prev blokk free og samanlöggð stærð þeirra nægilega stór
-		else if((prevSize+oldSize) >= size && !isPrevFree){
-			// svipuð pæling hér
-		}
-		// next og prev blokkir free og samanlöggð stærð þeirra nægilega stór
-		else if(!isPrevFree && isNextFree && (prevSize + nextSize + oldSize) >= size){
-			
-		}
-	}*/
-	/*else if(size > oldSize){
-		
-		mm_checkheap(1); 
-		//printf("IS NEXT FREE ???: %zu\n", isNextFree);
-		//printf("nextsize + oldsize + dsize = %zu\n", nextSize+oldSize+DSIZE);
-		//printf("size = %zu\n", size);
-		size_t totalSize = nextSize + oldSize + DSIZE;
-		if((nextSize + oldSize + DSIZE) >= size && !isNextFree){
-			//printf("FER HINGAÐ !!!!!\n");
-			void *freeBlock = NEXT_BLKP(oldp);
-			remove_block(freeBlock);
-
-			PUT(HDRP(oldp), PACK(size, 1));
-			PUT(FTRP(oldp), PACK(size, 1));
-
-			if((oldSize + nextSize) - size >= OVERHEAD){
-				void *newFreeBlock = NEXT_BLKP(oldp);
-				PUT(HDRP(newFreeBlock), PACK((oldSize+nextSize)-size, 0));
-				PUT(FTRP(newFreeBlock), PACK((oldSize+nextSize)-size, 0));
-				insert_block(newFreeBlock);
-			}
-			return oldp;
-		}
-	}*/
+	}*/	
 
 	// calculate the adjusted size of the request ????
 	// ef adjustedSize <= oldsize, return ptr
